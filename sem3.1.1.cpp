@@ -48,7 +48,7 @@ void handleException(int n) {
 		cout << "Too much operations";
 		break;
 	case -7:
-		cout << "Wrond operand in expression";
+		cout << "Wrong operand in expression";
 		break;
 	case -8:
 		cout << "Got no operator after left operand";
@@ -57,11 +57,13 @@ void handleException(int n) {
 		cout << "Expression ended wrong";
 		break;
 	case -10:
-		cout << "Variable " << errorVariable << " not found";
+		cout << "Variable {" << errorVariable << "} not found";
 		break;
 	case -100:
 		cout << "Unexpected EOF";
 		break;
+	case -99:
+		cout << "Runtime error : Zero division" << endl; return;
 	default:
 		cout << "Unexpected error(possibly EOF)";
 	}
@@ -233,11 +235,11 @@ bool isOperand(ifstream& in, char& c, int& value) {
 //	}
 //}
 
-bool t(ifstream& in, char& c) {
+bool isExpression(ifstream& in, char& c) {
 	int temp;
 	if (c == '(') {
 		if (in.get(c)) {
-			if (t(in, c)) {
+			if (isExpression(in, c)) {
 				if (isOperator(c)) {
 					current_operators++;
 					if (current_operators > MAX_OPERATORS) {
@@ -247,20 +249,41 @@ bool t(ifstream& in, char& c) {
 					if (in.get(c)) {
 						{
 							if (c == '(') {
-								if (in.get(c)) return t(in, c);
+								if (in.get(c)) {
+									if (isExpression(in, c)) {
+										if (c == ')') {
+											if (in.get(c)) {
+												return true;
+											}
+											else {
+												state = -100;
+												return false;
+											}
+										}
+										else {
+											state = -9;
+											return false;
+										}
+									}
+									else {
+										return false;
+									}
+								}
 								else {
 									state = -100;
 									return false;
 								}
 							}
 							else if (isOperand(in, c, temp)) {
-								if (c == ')') return true;
+								if (c == ')') { if (in.get(c)) return true; else { state = -100; return false; }; }
 								else {
 									state = -9;
 									return false;
 								}
 							}
 							else {
+								state = -7;
+								return false;
 							}
 						}
 					}
@@ -285,29 +308,48 @@ bool t(ifstream& in, char& c) {
 				return false;
 			}
 			if (in.get(c)) {
-				{
-					if (c == '(') {
-						if (in.get(c)) return t(in, c);
+				if (c == '(') {
+					if (in.get(c)) {
+						if (isExpression(in, c)) {
+							if (c == ')') {
+								if (in.get(c)) {
+									return true;
+								}
+								else {
+									state = -100;
+									return false;
+								}
+							}
+							else {
+								state = -9;
+								return false;
+							}
+						}
+						else {
+							return false;
+						}
+					}
+					else {
+						state = -100;
+						return false;
+					}
+				}
+				else if (isOperand(in, c, temp)) {
+					if (c == ')') {
+						if (in.get(c)) return true;
 						else {
 							state = -100;
 							return false;
 						}
 					}
-					else if (isOperand(in, c, temp)) {
-						if (c == ')') {
-							if (in.get(c)) return true;
-							else {
-								state = -100;
-								return false;
-							}
-						}
-						else {
-							state = -9;
-							return false;
-						}
-					}
 					else {
+						state = -9;
+						return false;
 					}
+				}
+				else {
+					state = -7;
+					return false;
 				}
 			}
 			else {
@@ -316,9 +358,11 @@ bool t(ifstream& in, char& c) {
 			}
 		}
 		else state = -8;
+		return false;
 	}
 	else {
 		state = -7;
+		return false;
 	}
 }
 
@@ -374,8 +418,7 @@ bool checkProgram(ifstream& in) {
 					state = -100;
 					break;
 				}
-				if (t(in, c)) {
-					in.get(c);
+				if (isExpression(in, c)) {
 					if (c == ';') {
 						instruction++;
 						state = 0;
@@ -412,11 +455,49 @@ bool checkProgram(ifstream& in) {
 	return false;
 }
 
+void calculateExpression(ifstream& in, char& c, stack& vs, stack& os) {
+	in.get(c); int value;
+	if (c == '(') {
+		calculateExpression(in, c, vs, os);
+		in.get(c);
+		push(os, c);
+		in.get(c);
+	}
+	else {
+		isOperand(in, c, value);
+		push(vs, value);
+		push(os, c);
+		in.get(c);
+	}
+	if (c == '(') {
+		calculateExpression(in, c, vs, os);
+		in.get(c);
+	}
+	else {
+		isOperand(in, c, value);
+	}
+	if (c == ')') {
+		int op = pop(os);
+		if (op == '+') push(vs, pop(vs) + value);
+		else if (op == '-') push(vs, pop(vs) - value);
+		else if (op == '*') push(vs, pop(vs) * value);
+		else if (op == '/') {
+			if (value == 0)
+			{
+				state = -99;
+				handleException(-1);
+				return;
+			}
+			push(vs, pop(vs) / value);
+		}
+	}
+}
+
 void executeProgram(ifstream& in) {
 	variable thisVar; char c = in.get();
 	stack var_stack = new elem{ nullptr, 0 }; int value;
 	stack op_stack = new elem{ nullptr, 0 };
-	string s = ""; int braceCounter = 0;
+	string s = "";
 	while (!in.eof()) {
 		switch (state) {
 		case 0:
@@ -435,8 +516,6 @@ void executeProgram(ifstream& in) {
 		case 3:
 			if (c == '(') {
 				state = 4;
-				braceCounter++;
-				break;
 			}
 			else {
 				isOperand(in, c, value);
@@ -445,44 +524,7 @@ void executeProgram(ifstream& in) {
 				state = 0; break;
 			}
 		case 4:
-			if (c == '(') {
-				braceCounter++;
-				break;
-			}
-			int operand;
-			isOperand(in, c, operand);
-			push(var_stack, operand);
-			push(op_stack, c);
-			state = 5;
-			break;
-		case 5:
-			if (c == '(') {
-				braceCounter++;
-				state = 4;
-				break;
-			}
-			else if (c == ')') {
-				braceCounter--;
-				int rOperand = pop(var_stack);
-				int op = pop(op_stack);
-				if (op == '+') push(var_stack, pop(var_stack) + rOperand);
-				else if (op == '-') push(var_stack, pop(var_stack) - rOperand);
-				else if (op == '*') push(var_stack, pop(var_stack) * rOperand);
-				else if (op == '/') push(var_stack, pop(var_stack) / rOperand);
-			}
-			else {
-				int operand; isOperand(in, c, operand);
-				int op = pop(op_stack);
-				if (op == '+') push(var_stack, pop(var_stack) + operand);
-				else if (op == '-') push(var_stack, pop(var_stack) - operand);
-				else if (op == '*') push(var_stack, pop(var_stack) * operand);
-				else if (op == '/') push(var_stack, pop(var_stack) / operand);
-				braceCounter--;
-			}
-			if (braceCounter != 0) {
-				in.get(c); push(op_stack, c);
-				break;
-			}
+			calculateExpression(in, c, var_stack, op_stack);
 			state = 6;
 			break;
 		case 6:
