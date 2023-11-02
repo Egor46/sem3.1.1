@@ -247,44 +247,42 @@ bool isExpression(ifstream& in, char& c) {
 						return false;
 					}
 					if (in.get(c)) {
-						{
-							if (c == '(') {
-								if (in.get(c)) {
-									if (isExpression(in, c)) {
-										if (c == ')') {
-											if (in.get(c)) {
-												return true;
-											}
-											else {
-												state = -100;
-												return false;
-											}
+						if (c == '(') {
+							if (in.get(c)) {
+								if (isExpression(in, c)) {
+									if (c == ')') {
+										if (in.get(c)) {
+											return true;
 										}
 										else {
-											state = -9;
+											state = -100;
 											return false;
 										}
 									}
 									else {
+										state = -9;
 										return false;
 									}
 								}
 								else {
-									state = -100;
-									return false;
-								}
-							}
-							else if (isOperand(in, c, temp)) {
-								if (c == ')') { if (in.get(c)) return true; else { state = -100; return false; }; }
-								else {
-									state = -9;
 									return false;
 								}
 							}
 							else {
-								state = -7;
+								state = -100;
 								return false;
 							}
+						}
+						else if (isOperand(in, c, temp)) {
+							if (c == ')') { if (in.get(c)) return true; else { state = -100; return false; }; }
+							else {
+								state = -9;
+								return false;
+							}
+						}
+						else {
+							state = -7;
+							return false;
 						}
 					}
 					else {
@@ -371,6 +369,8 @@ bool checkProgram(ifstream& in) {
 	int instruction = 1;
 	int temp;
 	string s = ""; int a = 0;
+	variable thisVar;
+	bool isInit = false;
 	while (!in.eof() && state >= 0) {
 		switch (state) {
 		case 0:
@@ -398,13 +398,13 @@ bool checkProgram(ifstream& in) {
 				break;
 			}
 			else {
-				state = -2;
+				state = -3;
 				break;
 			}
 		case 2:
 			if (c == '=') {
 				state = 3;
-				add(global, { s,0 });
+				thisVar = { s,0 };
 				s = ""; a = 0;
 				break;
 			}
@@ -421,6 +421,8 @@ bool checkProgram(ifstream& in) {
 				if (isExpression(in, c)) {
 					if (c == ';') {
 						instruction++;
+						add(global, thisVar);
+						s = ""; a = 0;
 						state = 0;
 						break;
 					}
@@ -436,6 +438,8 @@ bool checkProgram(ifstream& in) {
 			else if (isOperand(in, c, temp)) {
 				if (c == ';') {
 					instruction++;
+					add(global, thisVar);
+					s = ""; a = 0;
 					state = 0;
 					break;
 				}
@@ -525,6 +529,7 @@ void executeProgram(ifstream& in) {
 			}
 		case 4:
 			calculateExpression(in, c, var_stack, op_stack);
+			if (state == -99) break;
 			state = 6;
 			break;
 		case 6:
