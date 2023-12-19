@@ -492,7 +492,7 @@ void calculateExpression(ifstream& in, char& c, stack& vs, stack& os) {
 				handleException(-1);
 				return;
 			}
-			push(vs, pop(vs) / value);
+			push(vs, value / pop(vs));
 		}
 	}
 }
